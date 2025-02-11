@@ -18,6 +18,7 @@ local Vector3 = {
 }
 local CURSOR_CACHE = {} :: {[number]: number} -- cache for getCursor, to speed things up at the expense of memory
 local DO_CACHE = true and INIT_VECTOR_AM <= 1000 -- whether to cache the cursor or not
+local VECTOR_REGISTRY_LOCAL = Vector3.VectorRegistry -- localized to greatly improve performance
 
 -- Finds the index of the closest element in the array that is also less than the target in O(log n) time
 -- implemented to efficiently free vectors in order, when ORGANIZE_FREE is true
@@ -62,9 +63,9 @@ function Vector3.new(x: number?, y: number?, z: number?) : number
     -- allocate a new vector
     if Vector3.numFreeVectors <= 0 then
         Vector3.numVectorsInRegistry += 1
-        table.insert(Vector3.VectorRegistry, x or 0)
-        table.insert(Vector3.VectorRegistry, y or 0)
-        table.insert(Vector3.VectorRegistry, z or 0)
+        table.insert(VECTOR_REGISTRY_LOCAL, x or 0)
+        table.insert(VECTOR_REGISTRY_LOCAL, y or 0)
+        table.insert(VECTOR_REGISTRY_LOCAL, z or 0)
         return Vector3.numVectorsInRegistry -- vId
     end
 
@@ -79,9 +80,9 @@ function Vector3.new(x: number?, y: number?, z: number?) : number
     end
 
     local cursor = getCursor(vId)
-    Vector3.VectorRegistry[cursor] = x or 0
-    Vector3.VectorRegistry[cursor + 1] = y or 0
-    Vector3.VectorRegistry[cursor + 2] = z or 0
+    VECTOR_REGISTRY_LOCAL[cursor] = x or 0
+    VECTOR_REGISTRY_LOCAL[cursor + 1] = y or 0
+    VECTOR_REGISTRY_LOCAL[cursor + 2] = z or 0
 
     return vId
 end
@@ -91,9 +92,9 @@ function Vector3.free(vId: number)
     if vId < 1 or vId > Vector3.numVectorsInRegistry then  error(`Vector3.free({vId}: vId out of bounds`, 2)  end
 
     local cursor = getCursor(vId)
-    Vector3.VectorRegistry[cursor] = 0
-    Vector3.VectorRegistry[cursor + 1] = 0
-    Vector3.VectorRegistry[cursor + 2] = 0
+    VECTOR_REGISTRY_LOCAL[cursor] = 0
+    VECTOR_REGISTRY_LOCAL[cursor + 1] = 0
+    VECTOR_REGISTRY_LOCAL[cursor + 2] = 0
 
     -- if organize is enabled, insert the free vector in the correct position, otherwise just append it
     -- if we need to descend the first free vector, do so
@@ -114,7 +115,7 @@ end
 -- vector math functions
 function Vector3.getXYZ(vId: number): (number, number, number)
     local cursor = getCursor(vId)
-    return Vector3.VectorRegistry[cursor], Vector3.VectorRegistry[cursor + 1], Vector3.VectorRegistry[cursor + 2]
+    return VECTOR_REGISTRY_LOCAL[cursor], VECTOR_REGISTRY_LOCAL[cursor + 1], VECTOR_REGISTRY_LOCAL[cursor + 2]
 end
 
 function Vector3.magnitude(vId: number): number
@@ -127,23 +128,23 @@ Vector3.size = Vector3.magnitude -- alias
 -- calculates magnitude internally to avoid repeated calculations
 function Vector3.normalize(vId: number): ()
     local cursor = getCursor(vId)
-    local x, y, z = Vector3.VectorRegistry[cursor], Vector3.VectorRegistry[cursor + 1], Vector3.VectorRegistry[cursor + 2]
+    local x, y, z = VECTOR_REGISTRY_LOCAL[cursor], VECTOR_REGISTRY_LOCAL[cursor + 1], VECTOR_REGISTRY_LOCAL[cursor + 2]
     local mag = math.sqrt(x*x + y*y + z*z)
     if mag <= 0 then
         error(`Vector3.normalize({vId}): magnitude is zero V3({x},{y},{z})`, 2)
     end
-    Vector3.VectorRegistry[cursor] = x / mag
-    Vector3.VectorRegistry[cursor + 1] = y / mag
-    Vector3.VectorRegistry[cursor + 2] = z / mag
+    VECTOR_REGISTRY_LOCAL[cursor] = x / mag
+    VECTOR_REGISTRY_LOCAL[cursor + 1] = y / mag
+    VECTOR_REGISTRY_LOCAL[cursor + 2] = z / mag
 end
 Vector3.unit = Vector3.normalize -- alias
 
 function Vector3.normalizeWithSize(vId: number, mag: number): ()
     local cursor = getCursor(vId)
-    local x, y, z = Vector3.VectorRegistry[cursor], Vector3.VectorRegistry[cursor + 1], Vector3.VectorRegistry[cursor + 2]
-    Vector3.VectorRegistry[cursor] = x / mag
-    Vector3.VectorRegistry[cursor + 1] = y / mag
-    Vector3.VectorRegistry[cursor + 2] = z / mag
+    local x, y, z = VECTOR_REGISTRY_LOCAL[cursor], VECTOR_REGISTRY_LOCAL[cursor + 1], VECTOR_REGISTRY_LOCAL[cursor + 2]
+    VECTOR_REGISTRY_LOCAL[cursor] = x / mag
+    VECTOR_REGISTRY_LOCAL[cursor + 1] = y / mag
+    VECTOR_REGISTRY_LOCAL[cursor + 2] = z / mag
 end
 
 -- converts to a new Roblox Vector3 object
@@ -163,72 +164,72 @@ end
 function Vector3.add(vId1: number, vId2: number): ()
     local cursor1 = getCursor(vId1)
     local cursor2 = getCursor(vId2)
-    Vector3.VectorRegistry[cursor1] += Vector3.VectorRegistry[cursor2]
-    Vector3.VectorRegistry[cursor1 + 1] += Vector3.VectorRegistry[cursor2 + 1]
-    Vector3.VectorRegistry[cursor1 + 2] += Vector3.VectorRegistry[cursor2 + 2]
+    VECTOR_REGISTRY_LOCAL[cursor1] += VECTOR_REGISTRY_LOCAL[cursor2]
+    VECTOR_REGISTRY_LOCAL[cursor1 + 1] += VECTOR_REGISTRY_LOCAL[cursor2 + 1]
+    VECTOR_REGISTRY_LOCAL[cursor1 + 2] += VECTOR_REGISTRY_LOCAL[cursor2 + 2]
 end
 
 function Vector3.sub(vId1: number, vId2: number): ()
     local cursor1 = getCursor(vId1)
     local cursor2 = getCursor(vId2)
-    Vector3.VectorRegistry[cursor1] -= Vector3.VectorRegistry[cursor2]
-    Vector3.VectorRegistry[cursor1 + 1] -= Vector3.VectorRegistry[cursor2 + 1]
-    Vector3.VectorRegistry[cursor1 + 2] -= Vector3.VectorRegistry[cursor2 + 2]
+    VECTOR_REGISTRY_LOCAL[cursor1] -= VECTOR_REGISTRY_LOCAL[cursor2]
+    VECTOR_REGISTRY_LOCAL[cursor1 + 1] -= VECTOR_REGISTRY_LOCAL[cursor2 + 1]
+    VECTOR_REGISTRY_LOCAL[cursor1 + 2] -= VECTOR_REGISTRY_LOCAL[cursor2 + 2]
 end
 
 function Vector3.mult(vId: number, scalar: number): ()
     local cursor = getCursor(vId)
-    Vector3.VectorRegistry[cursor] *= scalar
-    Vector3.VectorRegistry[cursor + 1] *= scalar
-    Vector3.VectorRegistry[cursor + 2] *= scalar
+    VECTOR_REGISTRY_LOCAL[cursor] *= scalar
+    VECTOR_REGISTRY_LOCAL[cursor + 1] *= scalar
+    VECTOR_REGISTRY_LOCAL[cursor + 2] *= scalar
 end
 
 function Vector3.div(vId: number, scalar: number): ()
     local cursor = getCursor(vId)
-    Vector3.VectorRegistry[cursor] /= scalar
-    Vector3.VectorRegistry[cursor + 1] /= scalar
-    Vector3.VectorRegistry[cursor + 2] /= scalar
+    VECTOR_REGISTRY_LOCAL[cursor] /= scalar
+    VECTOR_REGISTRY_LOCAL[cursor + 1] /= scalar
+    VECTOR_REGISTRY_LOCAL[cursor + 2] /= scalar
 end
 
 function Vector3.floordiv(vId: number, scalar: number): ()
     local cursor = getCursor(vId)
-    Vector3.VectorRegistry[cursor] //= scalar
-    Vector3.VectorRegistry[cursor + 1] //= scalar
-    Vector3.VectorRegistry[cursor + 2] //= scalar
+    VECTOR_REGISTRY_LOCAL[cursor] //= scalar
+    VECTOR_REGISTRY_LOCAL[cursor + 1] //= scalar
+    VECTOR_REGISTRY_LOCAL[cursor + 2] //= scalar
 end
 
 function Vector3.dot(vId1: number, vId2: number): number
     local cursor1 = getCursor(vId1)
     local cursor2 = getCursor(vId2)
-    return Vector3.VectorRegistry[cursor1] * Vector3.VectorRegistry[cursor2] +
-           Vector3.VectorRegistry[cursor1 + 1] * Vector3.VectorRegistry[cursor2 + 1] +
-           Vector3.VectorRegistry[cursor1 + 2] * Vector3.VectorRegistry[cursor2 + 2]
+    return VECTOR_REGISTRY_LOCAL[cursor1] * VECTOR_REGISTRY_LOCAL[cursor2] +
+           VECTOR_REGISTRY_LOCAL[cursor1 + 1] * VECTOR_REGISTRY_LOCAL[cursor2 + 1] +
+           VECTOR_REGISTRY_LOCAL[cursor1 + 2] * VECTOR_REGISTRY_LOCAL[cursor2 + 2]
 end
 
 function Vector3.cross(vId1: number, vId2: number): ()
     local cursor1 = getCursor(vId1)
     local cursor2 = getCursor(vId2)
-    local x1, y1, z1 = Vector3.VectorRegistry[cursor1], Vector3.VectorRegistry[cursor1 + 1], Vector3.VectorRegistry[cursor1 + 2]
-    local x2, y2, z2 = Vector3.VectorRegistry[cursor2], Vector3.VectorRegistry[cursor2 + 1], Vector3.VectorRegistry[cursor2 + 2]
-    Vector3.VectorRegistry[cursor1] = y1 * z2 - z1 * y2
-    Vector3.VectorRegistry[cursor1 + 1] = z1 * x2 - x1 * z2
-    Vector3.VectorRegistry[cursor1 + 2] = x1 * y2 - y1 * x2
+    local x1, y1, z1 = VECTOR_REGISTRY_LOCAL[cursor1], VECTOR_REGISTRY_LOCAL[cursor1 + 1], VECTOR_REGISTRY_LOCAL[cursor1 + 2]
+    local x2, y2, z2 = VECTOR_REGISTRY_LOCAL[cursor2], VECTOR_REGISTRY_LOCAL[cursor2 + 1], VECTOR_REGISTRY_LOCAL[cursor2 + 2]
+    VECTOR_REGISTRY_LOCAL[cursor1] = y1 * z2 - z1 * y2
+    VECTOR_REGISTRY_LOCAL[cursor1 + 1] = z1 * x2 - x1 * z2
+    VECTOR_REGISTRY_LOCAL[cursor1 + 2] = x1 * y2 - y1 * x2
 end
 
 
 function Vector3.set(vId: number, x: number, y: number, z: number): ()
     local cursor = getCursor(vId)
-    Vector3.VectorRegistry[cursor] = x
-    Vector3.VectorRegistry[cursor + 1] = y
-    Vector3.VectorRegistry[cursor + 2] = z
+    VECTOR_REGISTRY_LOCAL[cursor] = x
+    VECTOR_REGISTRY_LOCAL[cursor + 1] = y
+    VECTOR_REGISTRY_LOCAL[cursor + 2] = z
 end
 
 function Vector3.copy(vId1: number, vId2: number): ()
     local cursor1 = getCursor(vId1)
     local cursor2 = getCursor(vId2)
-    Vector3.VectorRegistry[cursor1] = Vector3.VectorRegistry[cursor2]
-    Vector3.VectorRegistry[cursor1 + 1] = Vector3.VectorRegistry[cursor2 + 1]
-    Vector3.VectorRegistry[cursor1 + 2] = Vector3.VectorRegistry[cursor2 + 2]
+    VECTOR_REGISTRY_LOCAL[cursor1] = VECTOR_REGISTRY_LOCAL[cursor2]
+    VECTOR_REGISTRY_LOCAL[cursor1 + 1] = VECTOR_REGISTRY_LOCAL[cursor2 + 1]
+    VECTOR_REGISTRY_LOCAL[cursor1 + 2] = VECTOR_REGISTRY_LOCAL[cursor2 + 2]
 end
 
 
@@ -253,14 +254,33 @@ end
 
 function Vector3.clamp(vId: number, min: number, max: number): number
     local cursor = getCursor(vId)
-    local x, y, z = Vector3.VectorRegistry[cursor], Vector3.VectorRegistry[cursor + 1], Vector3.VectorRegistry[cursor + 2]
+    local x, y, z = VECTOR_REGISTRY_LOCAL[cursor], VECTOR_REGISTRY_LOCAL[cursor + 1], VECTOR_REGISTRY_LOCAL[cursor + 2]
     x = math.clamp(x, min, max)
     y = math.clamp(y, min, max)
     z = math.clamp(z, min, max)
-    Vector3.VectorRegistry[cursor] = x
-    Vector3.VectorRegistry[cursor + 1] = y
-    Vector3.VectorRegistry[cursor + 2] = z
+    VECTOR_REGISTRY_LOCAL[cursor] = x
+    VECTOR_REGISTRY_LOCAL[cursor + 1] = y
+    VECTOR_REGISTRY_LOCAL[cursor + 2] = z
     return vId
 end
+
+
+--[[
+local arr = {2, 5, 6, 8, 11}
+local function testCase(input: number, expected: number)
+    local result = closestBinarySearchRoundedDown(arr, input)
+    if result == expected then
+        print(`Test passed; {result} == {expected} (expected).  arr[{result}] = {arr[result]}`)
+    else
+        print(`Test failed. Expected {expected}, got {result}.  arr[{result}] = {arr[result]}`)
+    end
+end
+
+testCase(1, 1)
+testCase(8, 4)
+testCase(10, 4)
+testCase(12, 5)
+--]]
+
 
 return Vector3
